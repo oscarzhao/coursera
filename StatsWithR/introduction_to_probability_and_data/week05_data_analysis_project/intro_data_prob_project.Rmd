@@ -1,0 +1,244 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `brfss2013`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+* * *
+
+## Part 1: Data
+
+Obviouly, the study is an observational study.  From this study, we cannot make causal conclusions on any two fractors.
+However, we can make hypotheses on associations, and verify them with analysis.
+
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:**
+
+If you random select one sample who had ever tested HIV, what's the probability of the sample being male?
+
+**Research quesion 2:**
+
+Is there any difference in HIV test coverage among males and females?
+Try to find convincing evidence for your conclusion.
+
+
+**Research quesion 3:**
+
+Is there any association between education level and income level?
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
+button (green button with orange arrow) above. Make sure that your code is visible
+in the project you submit. Delete this note when before you submit your work.
+
+**Research quesion 1:**
+
+The question is a conditional probability problem.  First we need to know the distribution.
+
+```{r}
+
+q1.tbl <- table(sex = brfss2013$sex, hiv=brfss2013$hivtst6)
+q1.tbl
+
+```
+
+P = 54829/(54829+77345) = 0.4148244, about 41.5%.
+
+
+**Research quesion 2:**
+
+From the data set, we extract the following two fields:
+
+1. sex: Respondents Sex
+2. hivtst6: Ever Tested HIV
+
+First we divide the data set and count the number according to the two variables.
+
+
+```{r}
+sexHiv.tbl <- table(sex = brfss2013$sex, hiv = brfss2013$hivtst6)
+sexHiv.tbl
+```
+
+From the results, we can calculate:
+
+1. Sample Size
+
+  i. Number of Males = 54829+122787 = 177616
+  ii. Number of Females = 77345+182221 = 259566
+  iii. Total sample size = 177616+259566 = 437182
+  
+2. Among all population, 
+
+  i. percent(males) = 177616/437182 = 0.4062747
+  ii. percent(females) = 259566/437182 = 0.5937253
+   
+3. Coverage of HIV test among males =  54829/177616 = 0.308694
+4. Coverage of HIV test among females = 77345/259566 = 0.2979782
+5. Total coverage of HIV test among all sex = (54829+77345)/437182 = 0.3023318
+
+
+The difference of coverage rate is `0.308694 - 0.2979782 = 0.0107158`, 
+namely 1.07%.  The difference is very little, but we cannot make sure whether there is a difference in HIV test coverage among males or females.
+
+Here we make a hyperthesis with two claims:
+
+H0: Independence model. The variables *sex* and *hiv* are independent.  They have no relationship.  The difference rate 1.07%, is due to chance.
+HA: Alternative model.  The variables *sex* and *hiv* are not independent.
+
+We shall do a simluation for HIV test coverage among the same population.
+
+
+```{r}
+# HIV test coverage of the whole sample
+hivTestCoverRate <- 0.3023318
+
+maleNumber <- 177616
+femaleNumber <- 259566
+totalNumber <- 437182
+
+# assign sex to the population
+sexHivSim.sexList <- c(rep("Male", maleNumber), rep("Female", femaleNumber))
+
+# the function defines how to simluate the difference of HIV test coverage rate among males and females.
+simulate_diff_rate <- function(sexList, sampleSize, hivTestCov) {
+  hivList <- sample(c(TRUE, FALSE), totalNumber, replace=TRUE, prob=c(hivTestCov, 1.0 - hivTestCov))
+  df <- data.frame(sex = sexHivSim.sexList, hiv = hivList)
+  maleHiv <- df %>% filter(sex=="Male", hiv==TRUE) %>% summarise(total=n())
+  femaleHiv <- df %>% filter(sex=="Female", hiv==TRUE) %>% summarise(total=n())
+
+  # calculate the difference of HIV test coverage between male and female.
+  maleCoverage <- as.double(maleHiv$total)/as.double(maleNumber)
+  femaleCoverage <- as.double(femaleHiv$total)/as.double(femaleNumber)
+  maleCoverage - femaleCoverage
+}
+
+simulate_diff_rate(sexHivSim.sexList, totalNumber, hivTestCoverRate)
+```
+
+The code above is one simulation.  In order to know the distribution of coverage difference, we will do 1000
+simulations. Here is the code:
+
+```{r}
+# it takes about 10 seconds to run the simulation
+sexHivSim.func <- function(x) simulate_diff_rate(sexHivSim.sexList, totalNumber, hivTestCoverRate)
+sexHivSim.diffDistribution <- data.frame(diff= sapply(X=1:100,FUN=sexHivSim.func))
+
+# format the data in precision 3, and draw a stack dot plot
+stripchart(round(sexHivSim.diffDistribution, 3), method="stack", pch=1, ylim=c(0,100))
+```
+
+From the plot, we can tell the difference values are of a normal distribution.  So we can use `pnorm` to calculate the location of `0.0107` in the distribution:
+
+```{r}
+# calculate the mean and sd
+sexHivSim.res <- sexHivSim.diffDistribution %>% summarise(mean=mean(diff), median=median(diff), sd=sd(diff), iqr=IQR(diff))
+
+sexHivSim.res
+
+# find the location of 0.0107
+pnorm(0.0107, mean=sexHivSim.res$mean, sd=sexHivSim.res$sd)
+```
+
+The result is `1`.  It means that no values bigger than 0.0107 in the results simulated. In other words, the difference of at least 1.07% due to chance alone would
+not happen.  So we prove H0 false, and HA true.
+
+The conclusion is there is an association between sex and HIV test coverage (rate).
+
+**Research quesion 3:**
+
+To illustrate the percentage of different income levels for samples with different education levels, we draw a bar plot of income level percent by education level.  check the following code:
+
+```{r}
+eduIncome.tbl <- table(brfss2013$educa, brfss2013$income2)
+eduIncome.xnames <- c("No/Little education", "Elementary", "Some high school", "High school graduate", "Some college techincal school", "College graduate")
+eduIncome.xnames2 <- c("No/Little", "Elementary", "High school", "High school graduate", "College/techincal school", "College graduate")
+eduIncome.colors <- c("#e6e6e6", "#d7d7d7", "#c8c8c8", "#b7b7b7", "#a4a4a4", "#8e8e8e", "#737373", "#4d4d4d")
+barplot(t(prop.table(eduIncome.tbl, 1)), main="Distribution of Income Level by Education Level", xlab="education level", ylab="income percent", col=eduIncome.colors, legend=TRUE, names.arg = eduIncome.xnames2)
+
+```
+
+From the plot, we know two things clearly:
+1. strictly, the percent of "Less than $10,000" decreases as the education level increases
+2. generally, the percent of "$75,000 or more" increases as the education level increases
+
+We have similar findings with mosiac plot (to make it look pretty, we convert the value to shorter ones):
+
+```{r}
+convertIncome <- function(income_level) {
+  case_when(
+         income_level == "Less than $10,000" ~ 1,
+         income_level == "Less than $15,000" ~ 2,
+         income_level == "Less than $20,000" ~ 3,
+         income_level == "Less than $25,000" ~ 4,
+         income_level == "Less than $35,000" ~ 5,
+         income_level == "Less than $50,000" ~ 6,
+         income_level == "Less than $75,000" ~ 7, 
+         income_level == "$75,000 or more" ~ 8)
+}
+convertEducation <- function(edu_level) {
+  case_when(
+    edu_level == "Never attended school or only kindergarten" ~ 1,
+    edu_level == "Grades 1 through 8 (Elementary)" ~ 2, 
+    edu_level == "Grades 9 though 11 (Some high school)" ~ 3,
+    edu_level == "Grade 12 or GED (High school graduate)" ~ 4,
+    edu_level == "College 1 year to 3 years (Some college or technical school)" ~ 5,
+    edu_level == "College 4 years or more (College graduate)" ~ 6)
+}
+
+eduIncome.numTbl <- table(edu_level=convertEducation(brfss2013$educa), income_level=convertIncome(brfss2013$income2))
+
+mosaicplot(eduIncome.numTbl, 
+           main="Mosaic Plot on Relations of Education level and Income level", 
+           xlab="Education Level", ylab="Income Level", 
+           color = eduIncome.colors)
+```
+
+From the mosaic plot, we can also find out that the population with higer education levels tends to be larger (the width increases from left to right).
+
+However, we cannot conclude the increase of income level is associated with higher education level.
+Here, analyze the data structure of `eduIncome.tbl`, we know that it's a [two-way table](http://stattrek.com/statistics/two-way-table.aspx "two way table") because there are two
+categorical variable: `education level` and `income level`.  Usually we use Chi-Square test to assess the associations. 
+Here is the code:
+
+```{r}
+chisq.test(eduIncome.tbl)
+```
+
+We see that p-value < 2.2e-16 < 0.05, which is statistically significant.  So we can conclude that
+`there is a positive association between education level and income level`.
+
+## References:
+
+1. http://sites.stat.psu.edu/~ajw13/stat200_notes/12_assoc/10_assoc_print.htm
+2. http://www.r-tutor.com/elementary-statistics/goodness-fit/chi-squared-test-independence

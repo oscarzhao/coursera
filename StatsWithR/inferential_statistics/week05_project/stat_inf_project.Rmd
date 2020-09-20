@@ -1,0 +1,164 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `gss`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The dataset is from General Social Survey (GSS) done by Investigators from National Opinion Research Center.   The survey aims to monitor America societal change, and study its complexity.  The survey was first conducted in 1972, later conducted every one/two years, in the form of interviews with along with questionnaires.   The dataset contains the results of 28 surveys (1972-2012).  
+
+**Survey Targets**: According to "General Social Servey, 1972-2012[Cumulative File] Codebook", "The median length of the interview has been about one and a half hours. Each survey from 1972 to 2004 was an independently drawn sample of English-speaking persons 18 years of age or over, living in non-institutional arrangements within the United States".   Since 2006, Spanish-speakers were added to the sample target population.     
+
+**Survey Methods**: Samples for 1972-1974 surveys followed a modified proability sample design, while later surveys followed a full probability sample design. Detailed sampling methods vary for different sampling stages as time goes on.
+
+**Sample Errors**: Only adult, household population is sampled, but they cannot cover all resident population of US (97.3% in 1985).  And coverage varies by age group, a higher proportion of young adults (18-24) and the old (75 and older) live outside of household.  There are also errors in action, including no response, partial responses, etc.
+
+Here we take a look at the dataset on its size by year and hispanic.
+```{r sum-year}
+check.year_hispanic <- gss %>% group_by(year, hispanic) %>% summarise(sample_size=n())
+head(check.year_hispanic) # year 1972-1977
+tail(check.year_hispanic, n=19)   # year 2012
+
+```
+
+From the sample size of every year, we know that the size of English-speakers are < 10% of English-speaking population.  Sample size of Spanish-speakers also satisfy the 10% condition.
+Because modified/full probability sample design is followed, we can assume that samples are randomly selected (note every sample denotes generally a household), and they are independent of each other.
+We can genralize that the samples represents the whole US English-speaking (also Spanish-speaking since 2006) population.
+
+* * *
+
+## Part 2: Research question
+
+Is there any difference in average children number for English-speaking and Spanish-speaking populations?
+Average child number reflects the demands of schools, hospitals and many other services for children and families.
+For different language speakers, their needs can be different in many aspects.   The research could provide some information for plicy and planing.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+First, we need to prepare the data to do analysis.  Here I choose the data from year 2012, and classify the data into two groups: English-speaker and Spanish-speaker.
+
+```{r prepare-data}
+child2012 <- gss %>% 
+  filter(year==2012) %>% 
+  select(childs = childs, hispanic = hispanic) %>% 
+  mutate(language = ifelse(hispanic=="Not Hispanic","English","Spanish"))
+```
+
+Then, let's check the summary information of the data.
+
+```{r summary-info}
+summary(child2012)
+```
+
+We know that there are many branches for Spanish-speaking population, here we take all Hispanic branches as Spanish, and "Not Hispanic" as English-speakers.  
+We use this classifcation because 
+
+1. *Spanish speakers typically make up 60-65% of the language exclusions*, while *a dozen languages make up the remaining exclusions* (Codebook: p2881);
+2. Because of full probability sample design, we can assume that the proportion of Spanish-speakers and English-speakers in samples agree with the proportion in whole US population.
+
+We already know the sample size = 1974, but still need to check the sample size by *language*.
+
+```{r check-sample-info}
+child2012 %>% group_by(language) %>% summarize(total=n(), mean=mean(childs), sd=sd(childs))
+```
+
+We found out some NULL values for child number in English Speakers, which affected our analysis.  Here we filter them out, and re-check the sample info.
+
+```{r filter-out-null-child}
+# "nn" in child2012nn means "not null"
+child2012nn <- child2012 %>% filter(!is.na(childs))
+child2012nn %>% group_by(language) %>% summarize(n=n(), mean=mean(childs), sd=sd(childs))
+
+```
+
+Only 3 English-speaking respondents didn't give child number information, which means 1698/1701=99.8% gives responses.  Thus, we can ignore the 3 samples, and continue our analysis.
+
+Because the data are not paired, we can identify the research question as a *difference of two means* problem.  Often we use t-distribution for inference of standardized difference of two means, but it requires two condition:
+
+1. independence: the data are randomly sampled from whole US population according to full probability sample design, we can assume the samples are independent.
+2. each sample meets the condition for using t-distribution: We can assume that the sample of child number of US population is a normal distribution, so each sample in the dataset is nearly normal (as sample size increases, could be skewed).  Here we draw a plot to verify that.
+
+```{r bar-plot}
+child2012.dis <- child2012nn %>% filter(!is.na(language)) %>% group_by(childs,language) %>% summarise(n=n())
+
+ggplot(child2012.dis, aes(factor(language), n, fill = as.factor(childs))) + 
+  geom_bar(stat="identity", position = "dodge") + 
+  scale_fill_brewer(palette = "Set1")
+
+```
+
+From the plot, we can see that both samples are right skewed, but the sample size is large, still satisfying the condition for t-distribution. In the next part, we shall do the inference on difference of the two means.
+
+* * *
+
+## Part 4: Inference
+
+First, we check the confidence interval for the difference of means.  Here are the sample difference and standard error for the point estimate:
+
+$$ \bar{x}_{Spainish} - \bar{x}_{English} = 2.096654 - 1.861013	= 0.235641 $$
+
+$$ SE_{\bar{x}_{Spainish} - \bar{x}_{English}} = \sqrt{\frac{\sigma_{Spanish}^2}{n_{Spanish}} + \frac{\sigma_{English}^2}{n_{English}}}  \approx \sqrt{\frac{s_{Spanish}^2}{n_{Spanish}} + \frac{s_{English}^2}{n_{English}}} = \sqrt{\frac{1.876293^2}{269} + \frac{1.639092^2}{1698}} = 0.1211177$$
+
+The degree of freedom (df) is  min(1698-1, 269-1) = 268.  Corresponding test statistic is:
+
+```{r test-statistic}
+qt(p = 0.975, df = 268)
+```
+
+From the two variables, we can estimate the 95% confidence interval:
+
+$$ point\ estimate \pm t*SE \to 0.235641 \pm 1.968855*0.1211177 \to (-0.002822189, 0.4741042)$$
+
+We can tell that **0** is inside the 95% confidence interval, which means we're NOT 95% confident that the average child number of Spanish-speaking population is different with that of English-speaking population in United States.
+
+With hypothesis test, we can verify the above conclusion.  Our hypothesis is:
+
+$$H_{0}:\ child\ number\ of\ Spanish\ speaking\ and\ English\ speaking population\ are\ the\ same,\ on\ average. ¦Ì_{Spainish} - ¦Ì_{English} = 0 $$
+$$H_{A}:\ child\ number\ of\ Spanish\ speaking\ and\ English\ speaking\ population\ are\ different,\ on\ average. ¦Ì_{Spainish} - ¦Ì_{English} \neq 0 $$
+
+From the above calculated sample difference and standard error, we get the test statistic:
+
+$$T = \frac{point\ estimate - null\ value} {SE} =  \frac{0.235641-0}{0.1211177} = 1.945554 $$
+
+  We use R function to calcuate the p-value:
+
+```{r p-value}
+2 * pt(q = 1.945554, df = 268, lower.tail = FALSE)
+```
+
+Because it's a two-sided test, we doubled the probability from R.  the p-value is slightly bigger than 0.05, which means that we cannot reject H0.
+The conclusion is in accordance with the result of confidence interval check.
+
+From the research, we *CANNOT* prove there is a difference in child number for Spanish speaking persons and English speaking persons.  We can generalize the conclusion
+to whole United States population.
+

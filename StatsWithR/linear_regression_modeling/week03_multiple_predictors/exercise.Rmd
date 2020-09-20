@@ -1,0 +1,28 @@
+---
+title: "Regression with Multiple Predictors"
+output: statsr:::statswithr_lab
+---
+
+## Adjusted R-squared
+
+
+Here we use `female_house` to explain `poverty`:
+
+```{r adjusted-r-squared-female-house}
+# load data
+states = read.csv('http://d396qusza40orc.cloudfront.net/statistics/lec_resources/states.csv')
+
+# fits model
+pov_slr = lm(poverty ~ female_house, data=states)
+
+summary(pov_slr)
+```
+
+use ANOVA, we can verify the results:
+
+```{r adjusted-r-squared-female-house-anova}
+poverty_female = anova(pov_slr)
+poverty_female["Sum Sq"][1,] / (poverty_female["Sum Sq"][1,] + poverty_female["Sum Sq"][2,])
+
+```
+

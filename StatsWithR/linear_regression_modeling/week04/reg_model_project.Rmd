@@ -1,0 +1,427 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+```{r data-structure}
+str(movies)
+```
+
+The dataset contains 651 sample movies, each with 32 features (`title`, `title_type`, `genre`, ...).  All movies were produced and released before 2016.   From the cookbook, we know that the samples are randomly sampled, so we can generalize our analysis to all movies in IMDB & Rotten Tomatoes. Here I checked the distribution of the sample movies' `imdb_rating`:
+
+```{r check-imdb_rating}
+hist(x = movies$imdb_rating, main = "Distribution of IMDB Rating", xlab = "IMDB Rating", ylab = "Frequency")
+```
+
+```{r summary-imdb_rating}
+summary(movies$imdb_rating)
+```
+The distribution of IMDB Rating is nearly normal (right skewed), but our sample size is 651 (much bigger than 100), which verifies the randomness of the samples.
+
+Because the sample data is collected from IMDB, Rotten Tomatoes, we can only do observational study, no causal relationships can be inferred.  The IDMB/Rotten Tomatoes users are the whole population, but not all movie wathers, which could result in biases in the analysis.
+
+* * *
+
+## Part 2: Research question
+
+Is there any linear assocation between movie's IMDB score and its features?  The candidate features include
+
+1. title_type (categorical), 
+2. genre (categorical), 
+3. runtime (numerical), 
+4. mpaa_rating (categorical), 
+5. thtr_rel_year (numerical), 
+6. thtr_rel_month (numerical), 
+7. thtr_rel_day (numerical), 
+8. best_pic_nom (categorical), 
+9. best_pic_win (categorical),
+10. best_actor_win (categorical), 
+11. best_actress_win (categorical), 
+12. best_dir_win (categorical),
+13. imdb_num_votes (numerical),
+
+To simplify the model, we only care about IMDB score as the response, not Rotten Tomatoes Score.  We assume that the higher a movie's IMDB rating is, the more popular it is. As a data scientist at Paramount Pictures, I want to know what factors are associated with a movie's IMDB rating.
+
+About the feature selection, we dropped `title`, `studio`, because they are categorical data, but of too many categories (generally every movie has a unique title; there are too many film companies).  Too many categories means they can explain all variability of `imdb_rating`, so they are meaningless in this scope (perhpas meaningful when splitted into words, but not in our scope of discussion).
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+To apply linear regression, the dataset need satisfy three conditions for numerical variables:
+
+1. linear relationship of explanatory and response variables;
+2. residual plot should be (nearly) normal
+3. variability of points around the least squares line should be roughly constant
+
+For categorical variables, linear model will take one category as 1, and all others as 0.  For every category, there is a linear equal applied.
+
+In this case, we have one response variable `imdb_rating`, and 5 numerical explanatory variables: `runtime`, `thtr_rel_year`, `thtr_rel_month`, `thtr_rel_day`, `imdb_num_votes`, 8 categorical explanatory variables: `title_type`, `genre`, `mpaa_rating`, `best_pic_nom`, `best_pic_win`, `best_actor_win`, `best_actress_win`, `best_dir_win`.
+
+We shall take `runtime` and `title_type` as examples for numerical and categorical variables separately, and explore their linear relationship with response variable `imdb_rating`.
+
+### 3.1 IMDB Rating on `runtime` (numerical)
+
+Let's first check the linear relationship between `imdb_rating` and `runtime`.
+
+```{r eda-linear-check-runtime}
+ggplot(movies, aes(x=runtime, y=imdb_rating)) +
+  geom_point() +
+  geom_smooth(method = lm) +
+  ggtitle("IMDB Rating on Runtime (original)") +
+  xlab("Runtime") + 
+  ylab("IMDB Rating")
+```
+
+From the graph, we have three findings for `runtime`:
+
+  * there are some missing/non-finite values
+  * there is one extremely long movie (longer than 200 min)
+  * there are two extremely short movies (shorter than 50 min)
+
+Extreme values could have negative influence on a linear model, so these values could probably affect the linear relationship we're trying to find.  Here we only keep movies whose runtime is [50,200] min and re-draw the graph:
+
+```{r eda-linear-check-runtime-2}
+filtered_movies <- movies %>% filter(runtime>=50 & runtime <=200)
+
+ggplot(filtered_movies, aes(x=runtime, y=imdb_rating)) +
+  geom_point() +
+  geom_smooth(method = lm) +
+  ggtitle("IMDB Rating on Runtime") +
+  xlab("Runtime") + 
+  ylab("IMDB Rating")
+```
+
+After removing extreme values, we cannot tell the change in the slope and intercept of the line, so we need to compare the model parameters:
+
+```{r eda-linear-check-runtime-3}
+summary(lm(imdb_rating ~ runtime, data=movies))
+summary(lm(imdb_rating ~ runtime, data=filtered_movies))
+```
+
+The intercept decreases from 4.907873 to 4.748798 (-3.24%) while the slope increases from 0.014965 to 0.016424 (+9.75%).  The change in slope is quite persuasive, so we keep the filters (use `filtered_movies`).  One thing to note is that when we apply future model to prediction, the movie runtime should also be [50,200].
+
+Second, we shall check if the distribution of redisuals is nearly normal:
+
+```{r eda-linear-check-runtime-residuals}
+eda_runtime_lm <- lm(imdb_rating ~ runtime, data=filtered_movies)
+hist(eda_runtime_lm$residuals, main = "Histogram of Runtime Residuals", xlab = "Residuals")
+```
+
+The plot shows a right skewed distribution, but the sample size is much larger than 100, we can assume the distribution of runtime residuals is a nearly normal distribution.
+
+The final part is to check the range of residuals:
+
+```{r eda-linear-check-runtime-4}
+ggplot(eda_runtime_lm, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ggtitle("Residuals vs. Fitted (After removing extreme values)") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+The residual is ranged in (-5,3), because of the large sample size, we can assume that the residuals are roughly constant.
+
+Key information is that: 
+
+  * $R^2$ = 0.0705 (`runtime` explains 7.05% variability of `imdb_rating`)
+  * p-value=4.162e-12 < 0.05 (implying the linear relationship of `imdb_rating` and `runtime`)
+
+The formula can be written as: $\text{imdb rating predicted} = 4.748798 + 0.016424 * runtime$.
+
+### 3.2 IMDB Rating on `title_type` (categorical)
+
+`title_type` is a categorical explanatory variable, we first need to check the distributions of `imdb_rating` of different `title_type`s.  Here we use boxplot:
+
+```{r eda-categorical-title-type-boxplot}
+ggplot(movies, aes(x=title_type, y=imdb_rating)) +
+  geom_boxplot() +
+  ggtitle("IMDB Rating on Title Type") +
+  xlab("Title Types") + 
+  ylab("IMDB Rating")
+```
+
+The above boxplot shows there are obvious differences in median values in movies of different title types, but there are overlaps in the box of Feature Film and TV Movie.  To quantify the differences, we need to introduce linear model function `lm`: 
+
+```{r eda-categorical-title-type-lm}
+eda_title_type_lm <- lm(imdb_rating ~ title_type, data=movies)
+summary(eda_title_type_lm)
+```
+
+Obviously the reference level is `Documentary`.  `title_type` can explain 10.94% variability of `imdb_rating`, and the p-value is much smaller than 0.05.  We're quite sure there is a linear relathiship between `imdb_rating` and `title_type`.
+
+### 3.3 Find out useful explanatory variables
+
+There are 13 explanatory variables in the sample dataset, we shall not use the methods above to explore their linear relationship with response variable (`imdb_rating`) one by one.  However, we can use ANOVA to find out what variables are associated with `imdb_rating`:
+
+```{r exploratory-data-analysis-anova}
+movies_full <- lm(imdb_rating ~ title_type + genre + runtime + mpaa_rating + thtr_rel_year + thtr_rel_month + thtr_rel_day + best_pic_nom + best_pic_win + best_actor_win + best_actress_win + best_dir_win + imdb_num_votes, data=movies)
+
+anova(movies_full)
+```
+
+From the graph, we find out the p-values of 7 features (`title_type`, `genre`, `runtime`, `mpaa_rating`, `best_pic_film`, `best_dir_win`, `imdb_num_votes`) are smaller/much smaller than 0.05. We can roughly say that these features could explain the variability of `imdb_rating`.
+
+Another question we need to answer is: how much of the variablity of `imdb_rating` can be explained by these features?  To answer this question, we introduce $R^2$:
+
+```{r exploratory-data-analysis-r-squared}
+summary(movies_full)
+```
+
+The $R^2$ is 0.4336, which means 43.36% variability of `imdb_rating` can be explained by the full model.
+The graph tells us much more information than correlations.  9 explanatory variables (the same as results of ANOVA) are used in the graph: `title_type`, `genre`, `runtime`, `mpaa_rating`, `thtr_rel_year`, `best_pic_nomyes`, `imdb_num_votes`.  These explanatory variables are marked with 1/2/3 `*` notations at the end of every line, implying linear relation between the response variable `imdb_rating` and these explanatory variables.  
+
+There are still two explanatory variables that we cannot determine: `best_actor_win` and `best_dir_win`, they are marked with dot notation at the end of line.
+
+Another output to note is `p-value < 2.2e-16 < 0.05`, so we can infer that IMDB rating can be associated with these explanatory variables.
+
+* * *
+
+## Part 4: Modeling
+
+In previous part, we talked about the full model using 
+
+1. title_type, 
+2. genre, 
+3. runtime, 
+4. mpaa_rating, 
+5. thtr_rel_year, 
+6. thtr_rel_month, 
+7. thtr_rel_day, 
+8. best_pic_nom, 
+9. best_pic_win,
+10. best_actor_win, 
+11. best_actress_win, 
+12. best_dir_win,
+13. imdb_num_votes,
+
+and why we exclude out `title` and `studio`.  
+Here we only care about IMDB rating, ignoring rating from Rotten Tomatoes (`critics_rating`, `critics_score`, `audience_rating`, `audience_score`);
+
+We also ignore the director and actor/actress variables because we randomly sampled the data from a large dataset, director/actors can vary among different movies.  It means these features can explain all variability of IMDB rating from the analysis, which is meaningless to our research question.
+
+For simplicity, we do not remove movies whose runtime is out of [50,200].
+
+For this research question, we use `forward selection - Adjusted R squared` method to select features and update `Adjusted R squared`.  This method is more reliable than p-value method.  Here is the calculation for round 1:
+
+```{r model-round1}
+# initialfeaturelist stores a full feature list
+initialfeaturelist <- c(
+  "title_type",
+  "genre",
+  "runtime",
+  "mpaa_rating",
+  "thtr_rel_year",
+  "thtr_rel_month",
+  "thtr_rel_day",
+  "best_pic_nom",
+  "best_pic_win",
+  "best_actor_win",
+  "best_actress_win",
+  "best_dir_win",
+  "imdb_num_votes"
+)
+
+# select_feature function iterate the feature_to_select, run linear model
+# updated feature_selected, feature_left, and biggest adjusted R^2
+select_feature <- function(data, feature_selected, feature_to_select) {
+  adjusted_r_squared = 0 
+  bestfeature = ""
+  
+  for (i in 1:length(feature_to_select)) {
+    thisfeature <- feature_to_select[i]
+    # concat all selected features with ' + '
+    selectedfeaturestr = paste(c(feature_selected, thisfeature), collapse = ' + ')
+ 
+    # use new features to generate formula
+    # for example: imdb_rating ~ runtime + title_type
+    # Be attention: `imdb_rating` is hard coded in the function for convenience.  
+    theformula <- as.formula(paste("imdb_rating ~ ", selectedfeaturestr))
+    this_r_squared <- summary(lm(theformula, data=movies))$adj.r.squared
+    if (this_r_squared > adjusted_r_squared) {
+      adjusted_r_squared = this_r_squared
+      bestfeature = thisfeature
+    }
+  }
+  
+  # remove selected feature from the unselected list
+  feature_left = feature_to_select[feature_to_select != bestfeature]
+
+  # add this feature to selected list
+  feature_selected = c(feature_selected, bestfeature)
+  
+  return (list(feature_selected=feature_selected, feature_left=feature_left, adjusted_r_squared=adjusted_r_squared))
+}
+
+select_feature(movies, c(), initialfeaturelist)
+```
+
+In this step, I write a general purpose function `select_feature`, which consumes data and feature list,
+and return the best feature (highest adjusted $R^2$) and corresponding adjusted $R^2$.  
+When u execute `select_feature(movies, c(), initialfeaturelist)`, it equals:
+
+```
+adj_r_squared_title_type = summary(lm(imdb_rating ~ title_type, data = movies))$adjusted_r_squared
+adj_r_squared_genre = summary(lm(imdb_rating ~ genre, data = movies))$adjusted_r_squared
+adj_r_squared_runtime = summary(lm(imdb_rating ~ runtime, data = movies))$adjusted_r_squared
+adj_r_squared__mpaa_rating = summary(lm(imdb_rating ~ mpaa_rating, data = movies))$adjusted_r_squared
+adj_r_squared_thtr_rel_year = summary(lm(imdb_rating ~ thtr_rel_year, data = movies))$adjusted_r_squared
+adj_r_squared_thtr_rel_month = summary(lm(imdb_rating ~ thtr_rel_month, data = movies))$adjusted_r_squared
+adj_r_squared_thtr_rel_day = summary(lm(imdb_rating ~ thtr_rel_day, data = movies))$adjusted_r_squared
+adj_r_squared_best_pic_nom = summary(lm(imdb_rating ~ best_pic_nom, data = movies))$adjusted_r_squared
+adj_r_squared_best_pic_win = summary(lm(imdb_rating ~ best_pic_win, data = movies))$adjusted_r_squared
+adj_r_squared_best_actor_win = summary(lm(imdb_rating ~ best_actor_win, data = movies))$adjusted_r_squared
+adj_r_squared_best_actress_win = summary(lm(imdb_rating ~ best_actress_win, data = movies))$adjusted_r_squared
+adj_r_squared_best_dir_win = summary(lm(imdb_rating ~ best_dir_win, data = movies))$adjusted_r_squared
+adj_r_squared_imdb_num_votes = summary(lm(imdb_rating ~ imdb_num_votes, data = movies))$adjusted_r_squared
+
+# find the max of adj_r_squared_*  (should be genre)
+# feature_selected = add "genre" to `feature_selected`
+# feature_left = remove "genre" from `feature_to_select`
+# adjusted_r_squared = largest adjusted r squared
+```
+
+With function `select_feature`, we can automate the job for updating features and Adjusted $R^2$.  Then we can do complex calculations to select best feature list.  Here is the code to select features with largest Adjusted $R^2$:
+
+```{r select-all-useful-features}
+feature_selected = c()
+feature_left = initialfeaturelist
+best_adjusted_r_squared = 0
+
+while(TRUE) {
+  res = select_feature(movies, feature_selected = feature_selected, feature_to_select=feature_left)
+  if (res$adjusted_r_squared <= best_adjusted_r_squared) {
+    break  # break when no bigger adjusted R squared found
+  }
+  feature_selected = res$feature_selected
+  feature_left = res$feature_left
+  best_adjusted_r_squared = res$adjusted_r_squared 
+}
+
+feature_left
+feature_selected
+best_adjusted_r_squared
+
+```
+
+From the results, we get nine features selected, which are `genre`,`imdb_num_votes`,`thtr_rel_year`,`mpaa_rating`,`runtime`,`title_type`,`best_pic_nom`,`best_pic_win`,`best_dir_win`.  According to the information, we get our final model:
+
+```{r movie-final}
+movie_final = lm(imdb_rating ~ genre + imdb_num_votes + thtr_rel_year + mpaa_rating + runtime + title_type + best_pic_nom + best_pic_win + best_dir_win, data = movies)
+summary(movie_final)
+```
+
+### 4.1 Diagnositics for the model
+
+The first thing we do is to diagnose the model, to ensure the linear model is qualified.
+
+Firstly, we're quite sure about the linear relationship between these explanatory variables and response variables.
+
+Second, we need to check the distribution of residuals with `hist`:
+
+```{r diagnose-residual-dist}
+hist(movie_final$residuals, main = "Histogram of Final Model Residuals", xlab = "Residuals")
+```
+
+The distribution is right skewed, but the sample size is large, so we can assume it's nearly normal.
+
+Thirdly, we check if residuals are of nearly constant variability:
+
+```{r residual-plot}
+ggplot(movie_final, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ggtitle("Residuals vs. Fitted") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+The scatter plot is not symmetric around zero, but the values are limited in [-4, 2], considering the distribution of residuals is right skewed.  We can assume it's nearly symmetric.
+
+From the above two graphs, we can infer that residuals are randomly scattered around zero, and there are no unusual observations.
+
+Finally, Since the dataset is random sampled, we can assume the residuals are independent.
+
+### 4.2 Explanation of Slope and Intercept
+
+Thus the final formula is:
+
+For a movie with genra (Action & Adventure), best_pic_nom (no), best_pic_win(no), best_dir_win(no), mpaa_rating(G), title_type(Documentary), the predicted IMDB rating is:
+
+$$\hat{y} = 6.12889 + 0.004951* runtime + 3.611e-06 * \text{imdb_num_votes} - 0.01207 * \text{thtr_rel_year}$$
+which means keeping other variables constant, 
+
+1. for every minute longer of the runtime, the predicted IMDB rating goes up by 0.004951;
+2. for every imdb vote increase, the predicted IMDB rating goes up by 0.000003611;
+3. for every year increase in release year, the predicted IMDB rating goes down by 0.01207;
+
+Since there are too many categories for the all categorical variables, I do not list all formulas here.
+
+* * *
+
+## Part 5: Prediction
+
+I selected the film called `Hacksaw Ridge`, its features are:
+
+1. genre: Drama (because `Biography` is not in trained model)
+2. runtime: 139 min
+3. best_pic_nom: yes
+4. best_pic_win: no
+5. best_dir_win: no
+6. mpaa_rating: R
+7. title_type: "Feature Film"
+9. imdb_num_votes: 297908
+8. imdb_rating: 8.2
+
+Its corresponding data frame is:
+
+```{r prediction-data-frame}
+newmovie <- data.frame(title = "Hacksaw Ridge", title_type="Feature Film", genre = "Drama", runtime=139, best_pic_nom = "yes", best_pic_win="no", best_dir_win="no", thtr_rel_year=2016,  mpaa_rating="R", imdb_rating=8.2, imdb_num_votes=297908)
+```
+
+The predicted rating is:
+
+```{r predict-imdb-rating}
+predict(movie_final, newmovie, interval = "prediction", level = 0.95)
+```
+
+The predicted rating is 8.0, the 95% confidence interval is (6.3, 9.7).  It means that we're 95% confident that the actual IMDB rating falls between (6.3, 9.7).  The actual score is 8.2, verified the prediction.
+
+* * *
+
+## Part 6: Conclusion
+
+From the analysis above, we can conclude there is a linear association between the IMDB rating and a movie's features.  The features include `genre`,`imdb_num_votes`,`thtr_rel_year`,`mpaa_rating`,`runtime`,`title_type`,`best_pic_nom`,`best_pic_win`,`best_dir_win`, and they can explain 41.3% variability of `imdb_rating`. 
+I think the adjusted $R^2$ is not high, the linear model can be improved.  Possible directions can be:
+
+1. detailed interpretation of the `title` (perhaps word level)
+2. support multiple `genre`s
+3. more features such as `actor popularity`, `director popularity`
+
+These new directions can be beyond the capability of multiple linear regressions.
+

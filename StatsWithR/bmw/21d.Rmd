@@ -1,0 +1,266 @@
+---
+title: "懂车帝 21天 数据分布分析"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+懂车帝21天数据分布分析
+
+
+```{r load_libraries, message=FALSE}
+library(dplyr)
+```
+
+# Part 1: 根据搜索次数
+
+[SQL 执行结果链接](https://data.bytedance.net/aeolus/#/queryEditor/query/45f906f434cdb80e?group=default&blockId=1827880&taskId=6498420)
+
+
+```{r}
+search_cnt_tbl <- read.csv2("21d/search_cnt_dist.csv", header = TRUE, sep = ",", quote = "\"")
+search_cnt_tbl$search_cnt <- as.integer(as.character(search_cnt_tbl$search_cnt))
+```
+
+通过打印的结果，计算各个分位:
+
+
+```{r}
+sum(search_cnt_tbl$user_cnt)
+total_user_cnt <- sum(search_cnt_tbl$user_cnt)
+sum((search_cnt_tbl %>% filter(search_cnt <= 7))$user_cnt)/total_user_cnt
+sum((search_cnt_tbl %>% filter(search_cnt <= 14))$user_cnt)/total_user_cnt
+sum((search_cnt_tbl %>% filter(search_cnt <= 28))$user_cnt)/total_user_cnt
+```
+
+按照 AIFE 模型，可以按照下面的方式分配：
+
+A: x <= 7
+I: 7 < x <= 14
+F: 14 < x <= 28
+E: x > 28
+
+
+# Part 2: 根据车系页面总 pv
+
+[SQL执行结果](https://data.bytedance.net/aeolus/#/queryEditor/query/45f906f434cdb80e?group=default&blockId=1828089&taskId=6500277)
+
+```{r}
+car_series_pv_cnt_tbl <- read.csv2("21d/car_series_pv_total.csv", header = TRUE, sep = ",", quote = "\"")
+car_series_pv_cnt_tbl$view_cnt <- as.integer(as.character(car_series_pv_cnt_tbl$view_cnt))
+```
+
+通过打印的结果，计算各个分位:
+
+```{r}
+total_user_cnt <- sum(car_series_pv_cnt_tbl$user_cnt)
+total_user_cnt
+sum((car_series_pv_cnt_tbl %>% filter(view_cnt <= 20))$user_cnt)/total_user_cnt
+sum((car_series_pv_cnt_tbl %>% filter(view_cnt <= 60))$user_cnt)/total_user_cnt
+sum((car_series_pv_cnt_tbl %>% filter(view_cnt <= 180))$user_cnt)/total_user_cnt
+```
+
+
+# Part 3: 车系页面总 stay_time
+
+[SQL 执行结果](https://data.bytedance.net/aeolus/#/queryEditor/query/45f906f434cdb80e?group=default&blockId=1828092&taskId=6500299)
+
+
+```{r}
+car_series_stay_time_tbl <- read.csv2("21d/dongchedi_stay_time.csv", header = FALSE, sep = ",", quote = "") 
+
+names(car_series_stay_time_tbl) = c("stay_time", "user_cnt")
+# car_series_stay_time_tbl <- car_series_stay_time_tbl %>% filter(as.character(stay_time) != "NULL")
+
+car_series_stay_time_tbl$stay_time <- as.numeric(as.character(car_series_stay_time_tbl$stay_time))
+car_series_stay_time_tbl$user_cnt <- as.numeric(as.character(car_series_stay_time_tbl$user_cnt))
+```
+
+我们看下这里的数据分布：
+```{r}
+# hist((car_series_stay_time_tbl %>% filter(stay_time>10*60*1000))$stay_time)
+```
+
+
+```{r}
+car_series_stay_time_tbl <- car_series_stay_time_tbl %>% filter(stay_time > 0)
+total_user_cnt <- sum(car_series_stay_time_tbl$user_cnt)
+total_user_cnt
+sum((car_series_stay_time_tbl %>% filter(stay_time <= 10*60*1000))$user_cnt)/total_user_cnt
+sum((car_series_stay_time_tbl %>% filter(stay_time <= 30*60*1000))$user_cnt)/total_user_cnt
+sum((car_series_stay_time_tbl %>% filter(stay_time <= 60*60*1000))$user_cnt)/total_user_cnt
+```
+
+
+# Part 4：车系其他页面view次数
+
+[SQL 执行结果](https://data.bytedance.net/aeolus/#/queryEditor/query/45f906f434cdb80e?group=default&blockId=1828100&taskId=6500520)
+
+
+```{r}
+car_series_other_pv_tbl <- read.csv2("21d/car_series_other_pages_view.csv", header = TRUE, sep = ",", quote = "\"") %>% filter(as.character(other_click_event_cnt) != "NULL")
+
+car_series_other_pv_tbl$other_click_event_cnt <- as.numeric(as.character(car_series_other_pv_tbl$other_click_event_cnt))
+car_series_other_pv_tbl$user_cnt <- as.integer(as.character(car_series_other_pv_tbl$user_cnt))
+```
+
+我们看下数据分布：
+
+```{r}
+car_series_other_pv_tbl <- car_series_other_pv_tbl %>% filter(other_click_event_cnt > 0)
+total_user_cnt <- sum(car_series_other_pv_tbl$user_cnt)
+sum(car_series_other_pv_tbl$user_cnt)
+sum((car_series_other_pv_tbl %>% filter(other_click_event_cnt <= 30))$user_cnt)/total_user_cnt
+sum((car_series_other_pv_tbl %>% filter(other_click_event_cnt <= 60))$user_cnt)/total_user_cnt
+sum((car_series_other_pv_tbl %>% filter(other_click_event_cnt <= 120))$user_cnt)/total_user_cnt
+```
+
+
+# Part 5：车友圈 view 次数
+
+[SQL 执行结果](https://data.bytedance.net/aeolus/#/queryEditor/query/45f906f434cdb80e?group=default&blockId=1828921&taskId=6507801)
+
+
+```{r}
+car_talk_pv_tbl <- read.csv2("21d/car_series_car_talk_pv.csv", header = TRUE, sep = ",", quote = "\"") %>% filter(as.character(page_car_talk_main_cnt) != "NULL")
+
+car_talk_pv_tbl$page_car_talk_main_cnt <- as.numeric(as.character(car_talk_pv_tbl$page_car_talk_main_cnt))
+car_talk_pv_tbl$user_cnt <- as.integer(as.character(car_talk_pv_tbl$user_cnt))
+```
+
+我们看下数据分布：
+
+```{r}
+car_talk_pv_tbl <- car_talk_pv_tbl %>% filter(page_car_talk_main_cnt > 0)
+total_user_cnt <- sum(car_talk_pv_tbl$user_cnt)
+sum(car_talk_pv_tbl$user_cnt)
+sum((car_talk_pv_tbl %>% filter(page_car_talk_main_cnt <= 15))$user_cnt)/total_user_cnt
+sum((car_talk_pv_tbl %>% filter(page_car_talk_main_cnt <= 45))$user_cnt)/total_user_cnt
+# sum((car_talk_pv_tbl %>% filter(page_car_talk_main_cnt <= 60))$user_cnt)/total_user_cnt
+```
+
+
+# Part 5：加入车友圈的个数
+
+[SQL 执行结果](https://data.bytedance.net/aeolus/#/queryEditor/query/45f906f434cdb80e?group=default&blockId=1829299&taskId=6512481)
+
+
+```{r}
+car_talk_join_tbl <- read.csv2("21d/car_series_car_talk_join.csv", header = TRUE, sep = ",", quote = "\"") %>% filter(as.character(is_member_cnt) != "NULL")
+
+car_talk_join_tbl$is_member_cnt <- as.numeric(as.character(car_talk_join_tbl$is_member_cnt))
+car_talk_join_tbl$user_cnt <- as.integer(as.character(car_talk_join_tbl$user_cnt))
+```
+
+我们看下数据分布：
+
+```{r}
+car_talk_join_tbl <- car_talk_join_tbl %>% filter(is_member_cnt > 0)
+total_user_cnt <- sum(car_talk_join_tbl$user_cnt)
+total_user_cnt
+sum((car_talk_join_tbl %>% filter(is_member_cnt == 1))$user_cnt)/total_user_cnt
+sum((car_talk_join_tbl %>% filter(is_member_cnt == 2))$user_cnt)/total_user_cnt
+sum((car_talk_join_tbl %>% filter(is_member_cnt >= 3))$user_cnt)/total_user_cnt
+```
+
+# Part 6: 车主（拥有）
+
+[SQL 执行结果](https://data.bytedance.net/aeolus/#/queryEditor/query/45f906f434cdb80e?group=default&blockId=1829312&taskId=6512711)
+
+
+```{r}
+car_owner_tbl <- read.csv2("21d/car_owner.csv", header = TRUE, sep = ",", quote = "\"") %>% filter(as.character(own_cnt) != "NULL")
+
+car_owner_tbl$own_cnt <- as.numeric(as.character(car_owner_tbl$own_cnt))
+car_owner_tbl$user_cnt <- as.integer(as.character(car_owner_tbl$user_cnt))
+```
+
+我们看下数据分布：
+
+```{r}
+car_owner_tbl <- car_owner_tbl %>% filter(own_cnt > 0)
+total_user_cnt <- sum(car_owner_tbl$user_cnt)
+total_user_cnt
+car_owner_tbl
+```
+
+# Part 6: 流转率分析
+
+[2019-03-14 数据导出](https://data.bytedance.net/aeolus/#/queryEditor/query/b5d94d1178736b13?group=default&blockId=1830162&taskId=6525731)
+
+[2019-03-06 数据导出](https://data.bytedance.net/aeolus/#/queryEditor/query/b5d94d1178736b13?group=default&blockId=1830162&taskId=6525827)
+
+下载数据文件
+
+```{bash}
+# hdfs dfs -getmerge hdfs://haruna/user/tiger/dataplatform/query_editor/zhaoshuailong/aife_20190306 aife_20190306
+# hdfs dfs -getmerge hdfs://haruna/user/tiger/dataplatform/query_editor/zhaoshuailong/aife_20190314 aife_20190314
+```
+
+加载天级数据到内存中
+
+```{r}
+tbl_0306 <- read.csv2("21d/aife_20190306", header = FALSE, sep = ",", quote = "") 
+tbl_0314 <- read.csv2("21d/aife_20190314", header = FALSE, sep = ",", quote = "") 
+
+names(tbl_0306) <- c("emotion_type", "user_id")
+names(tbl_0314) <- c("emotion_type", "user_id")
+
+```
+
+拿到数据以后，统计转化人群
+
+```{r}
+tbl_0306_a <- tbl_0306 %>% filter(emotion_type == "a_type")
+tbl_0306_i <- tbl_0306 %>% filter(emotion_type == "i_type")
+tbl_0306_f <- tbl_0306 %>% filter(emotion_type == "f_type")
+tbl_0306_e <- tbl_0306 %>% filter(emotion_type == "e_type")
+
+tbl_0314_a <- tbl_0314 %>% filter(emotion_type == "a_type")
+tbl_0314_i <- tbl_0314 %>% filter(emotion_type == "i_type")
+tbl_0314_f <- tbl_0314 %>% filter(emotion_type == "f_type")
+tbl_0314_e <- tbl_0314 %>% filter(emotion_type == "e_type")
+```
+
+统计流转率
+
+```{r}
+
+tbl_06_data <- list(tbl_0306_a, tbl_0306_i, tbl_0306_f, tbl_0306_e)
+tbl_14_data <- list(tbl_0314_a, tbl_0314_i, tbl_0314_f, tbl_0314_e)
+
+intersected <- list()
+for (item_06 in tbl_06_data) {
+  for (item_14 in tbl_14_data) {
+    intersected <- c(intersected, length(intersect(item_06$user_id, item_14$user_id)))
+  }
+}
+
+flow_rates = list()
+for (i in 1:4) {
+  for (j in 1:4) {
+    total <- length(as.data.frame(tbl_06_data[i])$user_id)
+    # print(sprintf("%f/%d=%f",as.numeric(intersected[i*4 - 4 + j]), total, as.numeric(intersected[i*4 - 4 + j])/total))
+    flow_rates <- c(flow_rates, as.numeric(intersected[i*4 - 4 + j])/total)
+  }
+}
+
+flow_rates_m <- data.frame(matrix(unlist(flow_rates), ncol=4, byrow=TRUE))
+names(flow_rates_m) = c("to_A", "to_I", "to_F", "to_E")
+intersected_m <- data.frame(matrix(unlist(intersected), ncol=4, byrow=TRUE))
+names(intersected_m) = c("to_A", "to_I", "to_F", "to_E")
+```
+
+
+打印出流转率
+
+```{r}
+flow_rates_m
+```
+
+打印出流转人口
+
+```{r}
+intersected_m
+```

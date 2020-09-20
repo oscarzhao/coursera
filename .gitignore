@@ -1,0 +1,34 @@
+# IDE configurations
+.idea
+.vscode
+
+# python
+*.pyc
+.ipynb_checkpoints
+__pycache__
+
+# R
+.RData
+.Rhistory
+*.html
+*.htm
+
+# Matlab
+*.asv
+token.mat
+
+# big files
+imagenet-vgg-verydeep-19.mat
+*.csv
+*.mp4
+*.h5
+
+# 
+.DS_Store
+
+# java, scala
+target
+.idea
+*.log
+*.stdout.log
+.metals
