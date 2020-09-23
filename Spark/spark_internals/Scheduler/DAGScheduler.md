@@ -116,3 +116,7 @@ DAGScheduler 做三件事情：
 DAGScheduler 为每个 Job 生成一个有向无环图(DAG)，节点是stage，用来追踪哪些 RDD 和 stage 输出被实例化，找到一个最小的调度。然后将 stages 提交到 TaskScheduler。
 
 ![Figure 4. DAGScheduler.submitJob](img/dagscheduler-submitjob.png)
+
+在执行DAG之前，DAGScheduler 还需要根据当前的缓存状态确定每个task运行的 preferred location，将该信息传递给 TaskScheduler。
+
+为了避免重复计算，DAGScheduler 追踪RDD的缓存状态，比如重新对 shuffle 的map 侧进行计算。DAGScheduler 记录了已经将结果输出到文件的ShuffleMapStage
